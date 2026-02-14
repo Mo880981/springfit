@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SpringFit AI: 2026 春节特别版 (Supabase版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --primary: #c0392b; --primary-light: #e74c3c; --bg: #fdf5e6; --surface: #ffffff; --text: #2c3e50; --text-sub: #7f8c8d; --border: #ececec; }
+        body { font-family: -apple-system, "PingFang SC", sans-serif; background: var(--bg); color: var(--text); margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        #setup-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #c0392b, #9b2323); z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; transition: transform 0.6s; }
+        .setup-card { background: rgba(255, 255, 255, 0.95); padding: 30px; border-radius: 24px; width: 80%; max-width: 320px; text-align: center; color: var(--text); box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .big-input { width: 100%; padding: 15px; font-size: 20px; text-align: center; border: 2px solid #eee; border-radius: 12px; margin: 20px 0; background: #f9f9f9; outline: none; box-sizing: border-box; }
+        .start-btn { background: var(--primary); color: white; border: none; padding: 15px 40px; border-radius: 30px; font-size: 18px; font-weight: bold; width: 100%; cursor: pointer; }
+
+        #app-container { display: none; flex: 1; flex-direction: column; height: 100%; overflow: hidden; }
+        header { background: var(--surface); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 10; }
+        .header-title { font-weight: 900; font-size: 18px; color: var(--primary); }
+        main { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 80px; }
+        .card { background: var(--surface); border-radius: 16px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+
+        .ai-box { width: 100%; border: 2px dashed var(--primary-light); background: #fff5f5; padding: 12px; border-radius: 10px; font-size: 14px; box-sizing: border-box; resize: none; outline: none; }
+        .ai-btn { float: right; margin-top: 8px; background: linear-gradient(90deg, var(--primary), var(--primary-light)); color: white; border: none; padding: 6px 15px; border-radius: 20px; font-size: 12px; cursor: pointer; }
+        .tags-container { min-height: 25px; margin-top: 8px; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; color: white; margin-right: 5px; }
+        select, input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; border: 1px solid #ddd; background: #fff; box-sizing: border-box; font-size: 14px; }
+        optgroup { font-weight: bold; color: var(--primary); font-style: normal; }
+        
+        nav { height: 60px; background: var(--surface); border-top: 1px solid var(--border); display: flex; justify-content: space-around; align-items: center; position: fixed; bottom: 0; width: 100%; z-index: 100; }
+        .nav-item { text-align: center; font-size: 10px; color: var(--text-sub); background: none; border: none; cursor: pointer; padding: 8px; }
+        .nav-item.active { color: var(--primary); font-weight: bold; }
+        .page { display: none; }
+        .page.active { display: block; }
+        
+        .rank-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .rank-medal { font-size: 20px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div id="setup-screen">
+        <div class="setup-card">
+            <h2 style="margin:0 0 10px 0; color:var(--primary);">🏮 SpringFit AI</h2>
+            <p style="font-size:12px; color:#888; margin-bottom:20px;">Supabase云端版</p>
+            <input type="number" id="init-weight" class="big-input" placeholder="输入体重(kg)" autofocus>
+            <button class="start-btn" onclick="startApp()">开启打卡</button>
+            <p id="net-status" style="font-size:12px; color:#aaa; margin-top:10px;">⏳ 正在连接...</p>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <header>
+            <div class="header-title">SpringFit <span style="font-size:10px; color:var(--text-sub);">云端版</span></div>
+            <div style="font-size:12px; background:#fdf5e6; padding:4px 8px; border-radius:10px;">
+                体重: <span id="display-weight" style="font-weight:bold;">--</span> kg
+            </div>
+        </header>
+
+        <main>
+            <div id="page-home" class="page active">
+                <div class="card">
+                    <h3 style="margin:0 0 10px 0;">🎙️ AI 助手</h3>
+                    <textarea id="ai-input" class="ai-box" rows="2" placeholder="例：刚才去庙会逛了2小时..."></textarea>
+                    <div><div id="ai-tags" class="tags-container"></div><button class="ai-btn" onclick="processAI()">识别并填充</button></div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin:0 0 10px 0;">📝 手动打卡</h3>
+                    <form onsubmit="saveLog(event)">
+                        <label style="font-size:12px; color:#888;">日期</label>
+                        <input type="date" id="input-date" required>
+                        <label style="font-size:12px; color:#888;">项目</label>
+                        <select id="input-type" onchange="calculate()">
+                            <option value="" disabled selected>-- 请选择 --</option>
+                            <optgroup label="🧧 春节限定">
+                                <option value="4.0">🚶 逛庙会/拜年 (MET 4.0)</option>
+                                <option value="3.5">🧹 春节大扫除 (MET 3.5)</option>
+                                <option value="3.0">🏮 城市漫步 (MET 3.0)</option>
+                                <option value="6.5">🎊 暴走逛街 (MET 6.5)</option>
+                                <option value="8.0">🏔️ 爬楼梯/爬山 (MET 8.0)</option>
+                                <option value="10.0">🦁 舞狮/舞龙 (MET 10.0)</option>
+                                <option value="3.0">🧨 放鞭炮布置 (MET 3.0)</option>
+                                <option value="3.5">👨‍🍳 做年夜饭 (MET 3.5)</option>
+                                <option value="2.5">🀄 打麻将 (MET 2.5)</option>
+                            </optgroup>
+                            <optgroup label="🏃 日常运动">
+                                <option value="8.0">🏃 慢跑 (MET 8.0)</option>
+                                <option value="8.0">🏀 打篮球 (MET 8.0)</option>
+                                <option value="7.0">⚽ 踢足球 (MET 7.0)</option>
+                                <option value="5.5">🏸 羽毛球 (MET 5.5)</option>
+                                <option value="7.3">🎾 网球 (MET 7.3)</option>
+                                <option value="4.0">🏐 排球 (MET 4.0)</option>
+                                <option value="3.0">🧘 普拉提 (MET 3.0)</option>
+                                <option value="2.5">🧘‍♀️ 瑜伽 (MET 2.5)</option>
+                            </optgroup>
+                            <optgroup label="❄️ 冬季运动">
+                                <option value="7.0">⛷️ 滑雪 (MET 7.0)</option>
+                                <option value="5.5">⛸️ 滑冰 (MET 5.5)</option>
+                            </optgroup>
+                            <optgroup label="🏊 水上运动">
+                                <option value="7.0">🏊 游泳 (MET 7.0)</option>
+                                <option value="5.0">🛶 皮划艇 (MET 5.0)</option>
+                            </optgroup>
+                            <optgroup label="🎯 新兴运动">
+                                <option value="3.0">🥏 飞盘 (MET 3.0)</option>
+                            </optgroup>
+                        </select>
+                        <label style="font-size:12px; color:#888;">时长 (分钟)</label>
+                        <input type="number" id="input-time" oninput="calculate()" placeholder="例: 60" required>
+                        <div style="text-align:center; margin:15px 0; font-size:24px; font-weight:bold; color:var(--primary);">
+                            <span id="preview-val">0</span> <span style="font-size:14px;">kcal</span>
+                        </div>
+                        <button type="submit" style="width:100%; padding:15px; background:var(--primary); color:white; border:none; border-radius:30px; font-size:16px; font-weight:bold; cursor:pointer;">🎉 打卡上传</button>
+                    </form>
+                </div>
+            </div>
+
+            <div id="page-rank" class="page">
+                <div class="card">
+                    <h3 style="margin:0 0 15px 0;">🏆 春节消耗榜</h3>
+                    <p id="cloud-status" style="font-size:12px; color:#888; margin-bottom:15px;">加载中...</p>
+                    <div id="rank-list"></div>
+                </div>
+            </div>
+        </main>
+
+        <nav>
+            <button class="nav-item active" onclick="switchPage('home')">
+                <div style="font-size:20px;">🏠</div>
+                打卡
+            </button>
+            <button class="nav-item" onclick="switchPage('rank')">
+                <div style="font-size:20px;">🏆</div>
+                榜单
+            </button>
+        </nav>
+    </div>
+
+<script>
+    // ============================================
+    // Supabase 配置
+    // ============================================
+    // 👇 替换成你的URL（保持原样）
+    const SUPABASE_URL = 'https://ibsnfrkrnvhpkcethptj.supabase.co';
+    
+    // 👇 替换成正确的 anon public key（必须是以eyJ开头的超长字符串）
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlic25mcmtybnZocGtjZXRocHRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5OTcwMDcsImV4cCI6MjA4NjU3MzAwN30.CkflaHgP4NFy-fIlS4hINIZhalvND0DTked280GbZEQ';  
+    // 正确的格式应该像: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6...
+    // ============================================
+
+    let supabaseClient = null;  // 改名避免冲突
+    let userWeight = 0;
+    let userId = localStorage.getItem('sf_uid');
+    if (!userId) {
+        userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('sf_uid', userId);
+    }
+
+    // 初始化
+    window.onload = async function() {
+        const statusEl = document.getElementById('net-status');
+        
+        try {
+            // 检查SDK是否加载
+            if (typeof window.supabase === 'undefined') {
+                throw new Error('Supabase SDK未加载');
+            }
+
+            // 检查配置
+            if (!SUPABASE_KEY || SUPABASE_KEY === 'YOUR_CORRECT_ANON_KEY_HERE' || !SUPABASE_KEY.startsWith('eyJ')) {
+                statusEl.innerText = '⚠️ 请配置正确的anon key（以eyJ开头）';
+                statusEl.style.color = 'orange';
+                console.error('密钥格式错误！anon key应该以eyJ开头');
+                return;
+            }
+
+            // 初始化 Supabase Client
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            
+            statusEl.innerText = '✅ 云端服务已连接';
+            statusEl.style.color = 'green';
+            console.log('✅ Supabase 初始化成功');
+            
+        } catch(e) {
+            console.error('❌ Supabase初始化失败:', e);
+            statusEl.innerText = '❌ 初始化失败: ' + e.message;
+            statusEl.style.color = 'red';
+        }
+
+        // 加载保存的体重
+        const savedWeight = localStorage.getItem('sf_weight');
+        if (savedWeight) {
+            userWeight = parseFloat(savedWeight);
+            document.getElementById('init-weight').value = userWeight;
+        }
+
+        // 设置默认日期
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0];
+        document.getElementById('input-date').value = dateStr;
+    };
+
+    function startApp() {
+        const w = parseFloat(document.getElementById('init-weight').value);
+        if (!w || w < 30 || w > 200) return alert("请输入合理的体重(30-200kg)");
+        userWeight = w;
+        localStorage.setItem('sf_weight', w);
+        document.getElementById('setup-screen').style.transform = 'translateY(-100%)';
+        document.getElementById('app-container').style.display = 'flex';
+        document.getElementById('display-weight').innerText = userWeight;
+        if(supabaseClient) fetchRank(); 
+    }
+
+    // 保存打卡
+    async function saveLog(e) {
+        e.preventDefault();
+        
+        if (!supabaseClient) {
+            alert("⚠️ Supabase未初始化\n请检查密钥配置");
+            return;
+        }
+
+        const k = parseInt(document.getElementById('preview-val').innerText);
+        const d = document.getElementById('input-date').value;
+        const t = parseFloat(document.getElementById('input-type').value);
+        const time = parseInt(document.getElementById('input-time').value);
+
+        if (!k || !d || !t || !time) return alert("请完整填写所有字段");
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.innerText;
+        btn.innerText = '⏳ 上传中...';
+        btn.disabled = true;
+
+        try {
+            console.log('正在上传数据...');
+            
+            const { data, error } = await supabaseClient
+                .from('sport_logs')
+                .insert([
+                    {
+                        user_id: userId,
+                        date: d,
+                        met: t,
+                        minutes: time,
+                        calories: k,
+                        weight: userWeight
+                    }
+                ])
+                .select();
+
+            if (error) {
+                console.error('Supabase错误:', error);
+                throw error;
+            }
+
+            console.log('✅ 上传成功:', data);
+            alert(`🎉 云端同步成功！\n\n消耗: ${k} kcal\n日期: ${d}`);
+            
+            btn.innerText = originalText;
+            btn.disabled = false;
+            
+            document.getElementById('input-time').value = '';
+            document.getElementById('preview-val').innerText = '0';
+            document.getElementById('ai-input').value = '';
+            document.getElementById('ai-tags').innerHTML = '';
+            
+            fetchRank();
+            
+        } catch (error) {
+            console.error('❌ 上传失败:', error);
+            btn.innerText = originalText;
+            btn.disabled = false;
+            
+            let errorMsg = "❌ 上传失败\n\n";
+            
+            if (error.message && error.message.includes('relation')) {
+                errorMsg += "错误: 数据表 sport_logs 不存在\n\n请在Supabase后台创建表:\n1. Table Editor → New Table\n2. 表名: sport_logs\n3. 添加列: user_id, date, met, minutes, calories, weight";
+            } else if (error.message && error.message.includes('policy')) {
+                errorMsg += "错误: 权限不足\n\n请设置RLS策略:\n1. 进入sport_logs表\n2. 点击RLS\n3. 新建策略允许INSERT和SELECT";
+            } else if (error.code === '42P01') {
+                errorMsg += "错误: 表不存在\n请创建 sport_logs 表";
+            } else {
+                errorMsg += `错误: ${error.message || '未知错误'}\n错误代码: ${error.code || 'N/A'}`;
+            }
+            
+            alert(errorMsg);
+        }
+    }
+
+    // 获取榜单
+    async function fetchRank() {
+        if (!supabaseClient) {
+            document.getElementById('cloud-status').innerText = "⚠️ 未初始化";
+            return;
+        }
+
+        try {
+            document.getElementById('cloud-status').innerText = "⏳ 正在加载...";
+            
+            const { data, error } = await supabaseClient
+                .from('sport_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1000);
+
+            if (error) throw error;
+
+            console.log('✅ 查询成功，记录数:', data.length);
+            document.getElementById('cloud-status').innerText = `✅ 已同步 ${data.length} 条记录`;
+            document.getElementById('cloud-status').style.color = "green";
+            
+            // 按用户聚合
+            const users = {};
+            data.forEach(item => {
+                const uid = item.user_id;
+                const cal = item.calories || 0;
+                if (!users[uid]) {
+                    users[uid] = { id: uid, total: 0, count: 0 };
+                }
+                users[uid].total += cal;
+                users[uid].count += 1;
+            });
+
+            const ranking = Object.values(users).sort((a, b) => b.total - a.total);
+            
+            const list = document.getElementById('rank-list');
+            if (ranking.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#999; padding:30px;">暂无数据</p>';
+            } else {
+                list.innerHTML = ranking.map((u, i) => {
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="color:#999">${i + 1}</span>`;
+                    const isMe = u.id === userId;
+                    return `
+                        <div class="rank-item" style="${isMe ? 'background:#fff5f5; margin:0 -10px; padding:12px 10px; border-left:3px solid var(--primary);' : ''}">
+                            <div>
+                                <span class="rank-medal">${medal}</span>
+                                <span style="font-weight:${isMe ? 'bold' : 'normal'}; color:${isMe ? 'var(--primary)' : 'inherit'};">
+                                    ${isMe ? '你' : 'User ' + u.id.slice(-4)}
+                                </span>
+                                <span style="font-size:10px; color:#999; margin-left:5px;">${u.count}次</span>
+                            </div>
+                            <div style="font-weight:bold; color:var(--primary);">${u.total.toLocaleString()} kcal</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+        } catch (error) {
+            console.error('❌ 查询失败:', error);
+            document.getElementById('cloud-status').innerText = "❌ 查询失败";
+            document.getElementById('cloud-status').style.color = "red";
+        }
+    }
+
+    // AI识别
+    function processAI() {
+        const text = document.getElementById('ai-input').value;
+        const tagBox = document.getElementById('ai-tags');
+        tagBox.innerHTML = '';
+        if(!text.trim()) return alert('请输入运动描述');
+
+        const map = {
+            '庙会': 4.0, '拜年': 4.0, '大扫除': 3.5, '扫除': 3.5,
+            'Citywalk': 3.0, 'citywalk': 3.0, '漫步': 3.0, '逛街': 3.0, 
+            '暴走': 6.5, '爬楼': 8.0, '爬山': 8.0, '登山': 8.0,
+            '跑步': 8.0, '慢跑': 8.0, '篮球': 8.0, '足球': 7.0, 
+            '羽毛球': 5.5, '网球': 7.3, '排球': 4.0, 
+            '普拉提': 3.0, '瑜伽': 2.5, 
+            '滑雪': 7.0, '滑冰': 5.5, 
+            '游泳': 7.0, '皮划艇': 5.0, '飞盘': 3.0, 
+            '舞狮': 10.0, '舞龙': 10.0, '鞭炮': 3.0, 
+            '做饭': 3.5, '年夜饭': 3.5, '麻将': 2.5
+        };
+
+        let found = false;
+        for (let key in map) {
+            if (text.includes(key)) {
+                document.getElementById('input-type').value = map[key];
+                tagBox.innerHTML += `<span class="tag" style="background:#0984e3">📌 ${key}</span>`;
+                found = true;
+                break;
+            }
+        }
+
+        const timeMatch = text.match(/(\d+\.?\d*)\s*(小时|时|分钟|分|h|min|mins)/i);
+        if (timeMatch) {
+            let minutes = parseFloat(timeMatch[1]);
+            if (timeMatch[2].includes('时') || timeMatch[2].toLowerCase() === 'h') {
+                minutes *= 60;
+            }
+            document.getElementById('input-time').value = Math.round(minutes);
+            tagBox.innerHTML += `<span class="tag" style="background:#00b894">⏱️ ${Math.round(minutes)}分钟</span>`;
+            found = true;
+        }
+
+        if (found) {
+            calculate();
+            tagBox.innerHTML += `<span class="tag" style="background:#6c5ce7">✅ 识别成功</span>`;
+        } else {
+            tagBox.innerHTML = `<span class="tag" style="background:#d63031">❌ 未识别</span>`;
+        }
+    }
+
+    function calculate() {
+        const met = parseFloat(document.getElementById('input-type').value);
+        const time = parseInt(document.getElementById('input-time').value);
+        if (met && time && userWeight) {
+            const kcal = Math.round(met * userWeight * (time / 60));
+            document.getElementById('preview-val').innerText = kcal;
+        }
+    }
+
+    function switchPage(page) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        
+        document.getElementById('page-' + page).classList.add('active');
+        event.target.closest('.nav-item').classList.add('active');
+        
+        if (page === 'rank') {
+            fetchRank();
+        }
+    }
+
+    console.log('%c🏮 SpringFit AI - Supabase版', 'color: #c0392b; font-size: 20px; font-weight: bold;');
+    console.log('请确保anon key以eyJ开头');
+</script>
+</body>
+</html>
